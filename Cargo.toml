@@ -5,4 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+dirs = "7.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.53.3", features = ["full"] }
+toml = "1.1.8"
