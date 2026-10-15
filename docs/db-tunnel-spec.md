@@ -57,13 +57,13 @@ remote_host = "127.0.0.1"     # opzionale, default 127.0.0.1 (solo mode ssh)
 remote_port = 5432            # opzionale, default per engine: 3306 / 5432
 
 [[tunnel]]
-name = "test-mysql"
-engine = "mysql"
+name = "test-pg"
+engine = "postgres"
 mode = "iap"
 project = "my-project"
 zone = "europe-west8-b"
 instance = "my-test-vm"
-local_port = 13306
+local_port = 15433
 ```
 
 ### 4.3 Regole di validazione
