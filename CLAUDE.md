@@ -32,7 +32,7 @@ Test end-to-end contro GCP reale sono manuali: non lanciarli, non servono creden
 Dopo aver modificato `docs/*.md` o `CLAUDE.md`, esegui il lint. Node è gestito con nvm, quindi prima `nvm use --lts`:
 
 ```bash
-source ~/.nvm/nvm.sh && nvm use --lts && npx -y markdownlint-cli docs/*.md CLAUDE.md
+source ~/.nvm/nvm.sh && nvm use --lts && npx -y markdownlint-cli docs/*.md CLAUDE.md HANDOFF.md
 ```
 
 Config in `.markdownlint.json` (`MD013` line-length disattivata). Blocchi di codice sempre con linguaggio (`bash`, `toml`, `rust`, `text`).
@@ -78,4 +78,4 @@ Invarianti da rispettare:
 ## Stato
 
 <!-- Aggiorna a ogni fase completata -->
-Fase 1 (account gcloud) completata. Prossima: fase 2 (config). Vedi spec §12.
+Fasi 1 e 2 completate. Prossima: fase 3 (health check). Dettagli, decisioni prese e cose rimandate in `HANDOFF.md`: leggilo a inizio sessione e aggiornalo a fine lavoro. Piano completo: spec §12.

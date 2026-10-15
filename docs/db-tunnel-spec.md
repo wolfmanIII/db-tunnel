@@ -86,6 +86,9 @@ local_port = 15434
 - `name` univoco tra i tunnel.
 - `local_port` univoca tra i tunnel e compresa tra 1024 e 65535.
 - `remote_host` ammesso solo con `mode = "ssh"`.
+- `mode` è obbligatorio: se manca, errore che indica il tunnel.
+- Il file deve definire almeno un tunnel.
+- Campi sconosciuti (ad esempio per un refuso) sono un errore.
 - Campi per modalità:
 
   | Modalità | Obbligatori | Non ammessi |
@@ -273,7 +276,7 @@ Test end-to-end contro GCP reale: manuali, fuori dalla suite automatica.
 Ogni fase produce un binario funzionante.
 
 1. **Account gcloud** — `main` stampa l'account attivo o un errore chiaro. ✅ completata
-2. **Config** — lettura e validazione del TOML (tre modalità, con i campi per modalità del §4.3); `main` stampa i tunnel letti. Test di config.
+2. **Config** — lettura e validazione del TOML (tre modalità, con i campi per modalità del §4.3); `main` stampa i tunnel letti. Test di config. ✅ completata
 3. **Health check** — `health.rs` con i test del §11; comando `status` completo (account + check delle porte).
 4. **Avvio singolo tunnel** — spawn del processo del tunnel (`gcloud` o `cloud-sql-proxy`), controllo porta libera, attesa che la porta diventi raggiungibile, log dell'output di gcloud. Ctrl+C chiude il processo.
 5. **Supervisione** — macchina a stati, health check periodico, riavvio con backoff.
@@ -284,4 +287,3 @@ Ogni fase produce un binario funzionante.
 
 - **`expected_account`** per tunnel: rifiutare l'avvio se l'account gcloud attivo non corrisponde.
 - **Mitigazione `max_connect_errors`** per MySQL in modalità `iap` o `cloudsql` (vedi §7.5).
-- **Modalità di default** se `mode` non è specificato: attualmente obbligatoria.
