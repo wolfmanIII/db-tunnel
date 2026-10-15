@@ -39,7 +39,7 @@ Config in `.markdownlint.json` (`MD013` line-length disattivata). Blocchi di cod
 
 ## Architettura (sintesi)
 
-Moduli in `src/`: `main.rs` (CLI, segnali), `config.rs` (TOML, default, validazione), `gcloud.rs` (account attivo, costruzione comandi), `health.rs` (check MySQL/Postgres), `tunnel.rs` (supervisore a macchina a stati). Dettagli e diagramma degli stati: spec §6.
+Moduli in `src/`: `main.rs` (CLI, segnali), `config.rs` (TOML, default, validazione), `gcloud.rs` (account attivo, costruzione comandi `gcloud` e `cloud-sql-proxy`), `health.rs` (check MySQL/Postgres), `tunnel.rs` (supervisore a macchina a stati). Dettagli e diagramma degli stati: spec §6.
 
 Invarianti da rispettare:
 
@@ -56,6 +56,12 @@ Invarianti da rispettare:
 - Exit code: `0` ok, `1` errori di config/ambiente, `2` se `status` trova tunnel non `UP`.
 - Logging con `tracing` (stderr, default `info`, `RUST_LOG`). Niente `println!` per diagnostica. Ogni riga di un tunnel include il suo `name`. Output di `gcloud` riversato nel log con prefisso del nome tunnel.
 - Niente `unwrap()`/`expect()` fuori dai test, salvo invarianti documentate da un commento.
+
+## Git
+
+- Identità solo locale al repo (`git config --local`), mai `--global`.
+- Nei commit e nelle PR non aggiungere `Co-Authored-By` né altre righe di attribuzione a Claude.
+- Repo pubblico: prima di ogni push controlla che non ci siano nomi di VM, progetti o host aziendali reali, né email di lavoro. Negli esempi usa valori fittizi.
 
 ## Sicurezza
 

@@ -2,7 +2,7 @@
 
 ## 1. Obiettivo
 
-CLI in Rust che apre e mantiene attivi tunnel locali verso database MySQL e PostgreSQL ospitati su VM Google Compute Engine, usando `gcloud` come trasporto. Il tool verifica periodicamente che il database risponda e, se il tunnel cade o il DB non è raggiungibile, lo riavvia automaticamente.
+CLI in Rust che apre e mantiene attivi tunnel locali verso database MySQL e PostgreSQL su Google Cloud, in due casi: database installati su VM Compute Engine (trasporto `gcloud`) e istanze Cloud SQL (trasporto Cloud SQL Auth Proxy). Il tool verifica periodicamente che il database risponda e, se il tunnel cade o il DB non è raggiungibile, lo riavvia automaticamente.
 
 È anche un progetto di studio: le scelte privilegiano chiarezza e piccoli passi rispetto a completezza e ottimizzazione.
 
@@ -11,6 +11,7 @@ CLI in Rust che apre e mantiene attivi tunnel locali verso database MySQL e Post
 ### Incluso
 
 - Tunnel verso VM Compute Engine tramite `gcloud compute ssh` (port forwarding SSH) o `gcloud compute start-iap-tunnel` (IAP TCP forwarding).
+- Tunnel verso istanze Cloud SQL tramite Cloud SQL Auth Proxy (`cloud-sql-proxy`), con connessione all'IP pubblico dell'istanza.
 - Più tunnel definiti in un unico file di configurazione, gestiti in parallelo.
 - Health check per MySQL e PostgreSQL a livello di protocollo, senza credenziali.
 - Riavvio automatico con backoff.
@@ -19,7 +20,7 @@ CLI in Rust che apre e mantiene attivi tunnel locali verso database MySQL e Post
 
 ### Escluso (per ora)
 
-- Cloud SQL (Auth Proxy), altri cloud provider, altri database.
+- Cloud SQL con solo IP privato (richiede `--private-ip` e una rete raggiungibile), altri cloud provider, altri database.
 - Health check autenticato (`SELECT 1`) — possibile estensione futura.
 - Demonizzazione propria: per l'esecuzione in background si userà systemd.
 - Interfaccia grafica o TUI.
@@ -28,7 +29,12 @@ CLI in Rust che apre e mantiene attivi tunnel locali verso database MySQL e Post
 
 - `gcloud` installato e presente nel `PATH`.
 - Almeno un account autenticato (`gcloud auth login`).
-- Permessi IAM sufficienti sulla VM (SSH o IAP, a seconda della modalità).
+- Permessi IAM sufficienti (a seconda della modalità):
+  - `ssh` / `iap`: accesso SSH o IAP alla VM.
+  - `cloudsql`: ruolo "Cloud SQL Client" sul progetto e Cloud SQL Admin API abilitata.
+- Solo per `mode = "cloudsql"`:
+  - `cloud-sql-proxy` (v2) presente nel `PATH`, scaricato dalle release ufficiali del Cloud SQL Auth Proxy.
+  - Nessun secondo login: il proxy usa l'account attivo di gcloud grazie al flag `--gcloud-auth` (presente nella v2.26.2). L'account mostrato da `status` (§7.1) è quindi lo stesso usato dal proxy.
 
 ## 4. Configurazione
 
@@ -48,7 +54,7 @@ startup_timeout_secs = 20     # attesa massima perché il tunnel diventi raggiun
 [[tunnel]]
 name = "prod-pg"
 engine = "postgres"           # "mysql" | "postgres"
-mode = "ssh"                  # "ssh" | "iap"
+mode = "ssh"                  # "ssh" | "iap" | "cloudsql"
 project = "my-project"
 zone = "europe-west8-a"
 instance = "db-vm-1"
@@ -64,13 +70,31 @@ project = "my-project"
 zone = "europe-west8-b"
 instance = "my-test-vm"
 local_port = 15433
+
+[[tunnel]]
+name = "app-pg"
+engine = "postgres"
+mode = "cloudsql"
+instance_connection_name = "my-project:europe-west8:my-pg-db"   # progetto:regione:istanza
+local_port = 15434
 ```
+
+`instance_connection_name` si legge nella console Cloud SQL o con `gcloud sql instances describe <istanza> --format="value(connectionName)"`. Usa la **regione**, non la zona.
 
 ### 4.3 Regole di validazione
 
 - `name` univoco tra i tunnel.
 - `local_port` univoca tra i tunnel e compresa tra 1024 e 65535.
 - `remote_host` ammesso solo con `mode = "ssh"`.
+- Campi per modalità:
+
+  | Modalità | Obbligatori | Non ammessi |
+  | --- | --- | --- |
+  | `ssh` | `project`, `zone`, `instance` | `instance_connection_name` |
+  | `iap` | `project`, `zone`, `instance` | `instance_connection_name`, `remote_host` |
+  | `cloudsql` | `instance_connection_name` | `project`, `zone`, `instance`, `remote_host`, `remote_port` |
+
+- `instance_connection_name` deve avere la forma `progetto:regione:istanza` (tre parti non vuote separate da `:`).
 - Errori di validazione bloccano l'avvio con un messaggio che indica il tunnel e il campo coinvolti.
 
 ## 5. Interfaccia a riga di comando
@@ -94,7 +118,7 @@ Exit code: `0` se tutto ok, `1` per errori di configurazione o di ambiente, `2` 
 src/
   main.rs      # parsing CLI, avvio, gestione segnali
   config.rs    # struct di configurazione, defaults, validazione
-  gcloud.rs    # account attivo, costruzione comandi gcloud
+  gcloud.rs    # account attivo, costruzione comandi (gcloud e cloud-sql-proxy)
   health.rs    # health check MySQL / PostgreSQL
   tunnel.rs    # supervisore del singolo tunnel (macchina a stati)
 ```
@@ -104,7 +128,7 @@ src/
 - Runtime `tokio`.
 - `up` crea un task asincrono per ogni tunnel; i task sono indipendenti, il fallimento di uno non influenza gli altri.
 - Il task principale attende Ctrl+C / SIGTERM e poi chiede a tutti i task di terminare (`tokio_util::sync::CancellationToken` o canale `broadcast`).
-- I processi `gcloud` sono creati con `kill_on_drop(true)` come rete di sicurezza.
+- I processi figli (`gcloud`, `cloud-sql-proxy`) sono creati con `kill_on_drop(true)` come rete di sicurezza.
 
 ### 6.3 Macchina a stati del tunnel
 
@@ -112,7 +136,7 @@ src/
 Starting ──(porta raggiungibile + check ok)──▶ Up
 Starting ──(timeout o processo terminato)───▶ Backoff
 Up ───────(failure_threshold check falliti)─▶ Restarting
-Up ───────(processo gcloud terminato)───────▶ Backoff
+Up ───────(processo del tunnel terminato)───▶ Backoff
 Restarting ─(kill del processo)─────────────▶ Backoff
 Backoff ──(attesa)──────────────────────────▶ Starting
 ```
@@ -156,7 +180,15 @@ gcloud compute start-iap-tunnel <instance> <remote_port> \
   --local-host-port=localhost:<local_port> --project <project> --zone <zone>
 ```
 
-`stdout` e `stderr` del processo figlio vanno catturati e riversati nel log con il nome del tunnel come prefisso, così gli errori di gcloud (permessi, VM spenta, ecc.) sono visibili.
+Modalità `cloudsql` (il programma è `cloud-sql-proxy`, non `gcloud`):
+
+```bash
+cloud-sql-proxy <instance_connection_name> --gcloud-auth --address 127.0.0.1 --port <local_port>
+```
+
+Il proxy ascolta in locale e apre la connessione verso Cloud SQL solo quando arriva un client, quindi la porta locale può essere raggiungibile anche se l'istanza non risponde: per questo il controllo di prontezza è l'health check (§7.4) e non la sola porta aperta.
+
+`stdout` e `stderr` del processo figlio vanno catturati e riversati nel log con il nome del tunnel come prefisso, così gli errori (permessi, VM spenta, istanza Cloud SQL ferma, ecc.) sono visibili.
 
 ### 7.3 Controllo porta locale
 
@@ -165,6 +197,8 @@ Prima di avviare un tunnel, verificare che `local_port` sia libera (`TcpListener
 ### 7.4 Health check (`health.rs`)
 
 Connessione TCP a `127.0.0.1:<local_port>`, timeout di 3s su connect e su ogni read. Nessuna credenziale, nessun driver.
+
+Con `cloudsql` il check attraversa il proxy fino al database vero: ogni check apre una connessione reale verso Cloud SQL, quindi verifica tutto il percorso (credenziali del proxy, rete, istanza attiva).
 
 **MySQL** — il server invia per primo il pacchetto di handshake: 3 byte di lunghezza (little-endian), 1 byte di sequenza, poi il payload.
 
@@ -191,20 +225,21 @@ enum Health { Ok, Refused(u16), Down(String) }
 
 ### 7.5 Rischi noti dell'health check
 
-- **MySQL `max_connect_errors`**: ogni check chiude la connessione a metà handshake, e MySQL la conta come errore di connessione. Superata la soglia (default 100) l'host viene bloccato (errore 1129). Le connessioni da loopback (`127.0.0.1`/`::1`) sono escluse da questo meccanismo, quindi in modalità `ssh` con `remote_host = "127.0.0.1"` il problema non si pone. In modalità `iap`, o con `remote_host` non loopback, le connessioni arrivano da un IP remoto e il blocco è realistico (con check ogni 10s si arriva a 100 in meno di 20 minuti). Mitigazioni possibili, da decidere: alzare `max_connect_errors` sul server, intervallo di check più lungo, o health check autenticato.
+- **MySQL `max_connect_errors`**: ogni check chiude la connessione a metà handshake, e MySQL la conta come errore di connessione. Superata la soglia (default 100) l'host viene bloccato (errore 1129). Le connessioni da loopback (`127.0.0.1`/`::1`) sono escluse da questo meccanismo, quindi in modalità `ssh` con `remote_host = "127.0.0.1"` il problema non si pone. In modalità `iap` o `cloudsql`, o con `remote_host` non loopback, le connessioni arrivano da un IP remoto e il blocco è realistico (con check ogni 10s si arriva a 100 in meno di 20 minuti). Mitigazioni possibili, da decidere: alzare `max_connect_errors` sul server, intervallo di check più lungo, o health check autenticato.
 - **PostgreSQL**: chiudere la connessione dopo la `SSLRequest` può generare nel log del server righe tipo "incomplete startup packet". Non è dannoso, solo rumore.
+- **Cloud SQL, istanze piccole**: ogni check consuma una connessione reale per pochi istanti. Su tier piccoli (es. `db-f1-micro`, limite basso di connessioni) non abbassare troppo `check_interval_secs` e non aprire più tunnel verso la stessa istanza senza necessità.
 
 ## 8. Logging
 
 - Crate `tracing` + `tracing-subscriber`, output su stderr con timestamp.
 - Livello di default `info`, configurabile con la variabile d'ambiente `RUST_LOG`.
 - Ogni riga relativa a un tunnel include il suo `name`.
-- Eventi da loggare almeno: avvio, `Up`, check fallito (`debug` il singolo, `warn` al raggiungimento della soglia), `Refused`, riavvio, attesa di backoff, uscita del processo gcloud con exit code, shutdown.
+- Eventi da loggare almeno: avvio, `Up`, check fallito (`debug` il singolo, `warn` al raggiungimento della soglia), `Refused`, riavvio, attesa di backoff, uscita del processo del tunnel (`gcloud` o `cloud-sql-proxy`) con exit code, shutdown.
 
 ## 9. Gestione errori
 
 - `anyhow` nel binario (main, orchestrazione) per propagare errori con contesto (`.context("...")`).
-- Errori di configurazione, di ambiente (gcloud assente, nessun account) e di porta occupata sono fatali all'avvio.
+- Errori di configurazione, di ambiente (gcloud assente, nessun account, `cloud-sql-proxy` assente se c'è un tunnel `cloudsql`) e di porta occupata sono fatali all'avvio.
 - Errori a runtime di un singolo tunnel non sono mai fatali: si gestiscono con la macchina a stati.
 
 ## 10. Dipendenze
@@ -222,8 +257,8 @@ enum Health { Ok, Refused(u16), Down(String) }
 
 ## 11. Test
 
-- **config**: parsing di esempi validi, applicazione dei default (`remote_port` per engine), errori di validazione (nomi o porte duplicate, `remote_host` con `iap`).
-- **gcloud**: costruzione degli argomenti per le due modalità, verificata come lista di stringhe.
+- **config**: parsing di esempi validi, applicazione dei default (`remote_port` per engine), errori di validazione (nomi o porte duplicate, `remote_host` con `iap`, campi obbligatori o vietati per ogni modalità, `instance_connection_name` malformato).
+- **gcloud**: costruzione degli argomenti per le tre modalità, verificata come lista di stringhe.
 - **health**: test `#[tokio::test]` con un `TcpListener` locale che simula il server:
   - MySQL che invia handshake valido → `Ok`
   - MySQL che invia ERR 1129 → `Refused(1129)`
@@ -237,10 +272,10 @@ Test end-to-end contro GCP reale: manuali, fuori dalla suite automatica.
 
 Ogni fase produce un binario funzionante.
 
-1. **Account gcloud** — `main` stampa l'account attivo o un errore chiaro. ✅ in corso
-2. **Config** — lettura e validazione del TOML; `main` stampa i tunnel letti. Test di config.
+1. **Account gcloud** — `main` stampa l'account attivo o un errore chiaro. ✅ completata
+2. **Config** — lettura e validazione del TOML (tre modalità, con i campi per modalità del §4.3); `main` stampa i tunnel letti. Test di config.
 3. **Health check** — `health.rs` con i test del §11; comando `status` completo (account + check delle porte).
-4. **Avvio singolo tunnel** — spawn del processo gcloud, controllo porta libera, attesa che la porta diventi raggiungibile, log dell'output di gcloud. Ctrl+C chiude il processo.
+4. **Avvio singolo tunnel** — spawn del processo del tunnel (`gcloud` o `cloud-sql-proxy`), controllo porta libera, attesa che la porta diventi raggiungibile, log dell'output di gcloud. Ctrl+C chiude il processo.
 5. **Supervisione** — macchina a stati, health check periodico, riavvio con backoff.
 6. **Più tunnel e CLI** — un task per tunnel, sottocomandi `up`/`status` con `clap`, opzione `--only`, shutdown coordinato, logging con `tracing`.
 7. **(Opzionale) systemd** — unit file di esempio in `docs/`.
@@ -248,5 +283,5 @@ Ogni fase produce un binario funzionante.
 ## 13. Decisioni aperte
 
 - **`expected_account`** per tunnel: rifiutare l'avvio se l'account gcloud attivo non corrisponde.
-- **Mitigazione `max_connect_errors`** per MySQL in modalità `iap` (vedi §7.5).
+- **Mitigazione `max_connect_errors`** per MySQL in modalità `iap` o `cloudsql` (vedi §7.5).
 - **Modalità di default** se `mode` non è specificato: attualmente obbligatoria.
