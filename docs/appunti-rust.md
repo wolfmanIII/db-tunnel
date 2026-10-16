@@ -126,9 +126,86 @@ Possiedono un blocco di memoria. Una copia automatica darebbe a due variabili lo
 | Tipo | Capacità | Perché |
 | --- | --- | --- |
 | `Engine`, `Mode` | `Debug, Clone, Copy, PartialEq, Eq, Deserialize` | piccoli, copiabili, letti dal TOML |
-| `Settings` | `Debug, PartialEq, Eq, Deserialize` | letto dal TOML e confrontato nei test, ma contiene più campi e non serve copiarlo |
+| `Settings` | `Debug, PartialEq, Eq, Deserialize` con `derive`, più `Default` scritto a mano | letto dal TOML e confrontato nei test, ma contiene più campi e non serve copiarlo. I valori di partenza sono 10, 3 e 20, non zero |
 | `Tunnel`, `Config` | `Debug, PartialEq, Eq` | solo stampa e confronto nei test. Hanno campi `String`, quindi niente `Copy` |
+| `Target` | `Debug, PartialEq, Eq` con `derive`, più `Display` scritto a mano | la stampa leggibile (`ssh progetto/zona/vm -> host:porta`) non esiste come `derive` |
 | `RawConfig`, `RawTunnel` | `Debug, Deserialize` | forma grezza del TOML, letta dal file |
+
+### Da dove viene una capacità
+
+| Capacità | Da dove viene |
+| --- | --- |
+| `Default`, `Clone`, `Copy`, `Debug`, `Display`, `PartialEq`, `Eq` | libreria standard di Rust, sempre disponibile |
+| `Deserialize` | libreria `serde`, per questo in cima al file c'è `use serde::Deserialize;` |
+
+Un modo per capirlo: se in cima al file c'è un `use` che nomina la capacità, viene da una libreria esterna. Se non c'è, viene da Rust.
+
+### `derive` o `impl` a mano: tutto o niente
+
+- `#[derive(...)]` genera la capacità intera con il comportamento standard. Non si può dire "standard, tranne questo metodo".
+- Se serve cambiare anche un solo metodo, la capacità **non** va nel `derive`: si scrive `impl Capacità for Tipo` a mano.
+- Derivare e scrivere a mano la stessa capacità sullo stesso tipo è un errore di compilazione (`conflicting implementations`).
+- Capacità diverse sullo stesso tipo si possono mescolare, alcune con `derive` e altre a mano.
+
+Esempi in `src/config.rs`:
+
+- `Settings`: `Debug`, `PartialEq`, `Eq` e `Deserialize` con `derive`, `Default` a mano. Con `derive(Default)` i numeri varrebbero tutti `0`, cioè un controllo ogni 0 secondi.
+- `Target`: `Display` a mano, per decidere come si stampa.
+
+### Una capacità può avere più metodi
+
+Il numero dipende dalla capacità. Un metodo è una funzione che appartiene a un tipo.
+
+| Capacità | Metodi |
+| --- | --- |
+| `Default` | 1: `default()` |
+| `Clone` | 1: `clone()` |
+| `Display` | 1: `fmt()` |
+| `PartialEq` | 1 obbligatorio, `eq()`. `ne()` (diverso da) viene già pronto |
+| `Iterator` | 1 obbligatorio, `next()`, e decine già pronti (`map`, `filter`...) |
+| `Copy`, `Eq` | nessuno. Sono etichette: dicono al compilatore che il tipo ha una proprietà |
+
+Scrivendo `impl` a mano si devono scrivere i metodi **obbligatori**. Quelli già pronti si scrivono solo per cambiarli.
+
+### `Default`: i valori di partenza
+
+La capacità `Default` ha un solo metodo, `default()`, che restituisce i valori di partenza di un tipo. Viene dalla libreria standard, non da `serde`.
+
+```rust
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            check_interval_secs: 10,
+            failure_threshold: 3,
+            startup_timeout_secs: 20,
+        }
+    }
+}
+```
+
+`Self` è un modo breve per dire "questo stesso tipo", qui `Settings`.
+
+Si usa solo dove ha senso dire "se non scegli niente, va bene questo". Un `Tunnel` non ha `Default`: senza nome, porta e modalità non ha senso, e se mancano deve esserci un errore.
+
+I tipi standard hanno già il loro `Default`: `0` per i numeri, `false` per `bool`, testo vuoto per `String`, lista vuota per `Vec`.
+
+Tre modi di usarla:
+
+```rust
+// 1. chiamarla direttamente (come fa un test del progetto)
+let s = Settings::default();
+
+// 2. cambiare solo alcuni campi: gli altri vengono da Default
+let s = Settings {
+    check_interval_secs: 30,
+    ..Default::default()
+};
+
+// 3. valore di riserva per un Option
+let x = n.unwrap_or_default();   // se n è None, vale il default del tipo (0 per u32)
+```
+
+`serde` la usa da solo quando nel TOML manca un campo (vedi la sezione 5).
 
 ### `mut` e `&mut`: non sono la stessa cosa
 
@@ -344,6 +421,34 @@ Il `match` deve coprire **tutti i casi**, altrimenti non compila (`non-exhaustiv
 - `impl Engine { ... }` raccoglie le funzioni che appartengono al tipo, come i metodi di una classe. Si chiamano come `engine.default_port()`.
 - `self` è il valore su cui si chiama il metodo. Qui è preso per valore, ma `Engine` è `Copy` (sezione 2), quindi chiamare `default_port` non lo consuma: `engine` resta usabile dopo.
 - `Engine::Mysql` usa `::` per nominare una variante, come per le funzioni associate (`String::from`).
+
+## 5. Leggere il TOML con `serde`
+
+Rust non ha nella libreria standard un lettore di TOML (né di JSON). Si potrebbe scrivere a mano, ma sono centinaia di righe con molti casi limite. Per questo il progetto usa due librerie (spec §10), con compiti diversi:
+
+| Libreria | Compito |
+| --- | --- |
+| `toml` | conosce il **formato**: legge il testo del file (sezioni, stringhe, numeri, commenti) |
+| `serde` | fa il **collegamento ai tuoi tipi**: riempie le struct e offre gli attributi `#[serde(...)]` |
+
+### Gli attributi `#[serde(...)]`
+
+Dentro le parentesi ci sono istruzioni separate da virgole. In `Settings`:
+
+```rust
+#[serde(default, deny_unknown_fields)]
+```
+
+- **`default`**: se nel file **manca** un campo, `serde` prende il valore da `Default`.
+- **`deny_unknown_fields`**: se nel file c'è un campo che la struct **non conosce**, è un errore. Senza, un refuso come `check_interval = 5` verrebbe ignorato in silenzio.
+
+```toml
+[settings]
+check_interval_secs = 30   # va bene, gli altri due campi valgono 3 e 20
+check_interval = 5         # errore: campo sconosciuto
+```
+
+I campi ammessi sono quelli scritti nella definizione della struct. `deny_unknown_fields` c'è anche su `RawConfig` e `RawTunnel`, quindi vale per tutto il file, non solo per `[settings]`. Se manca l'intera sezione `[settings]`, `RawConfig` la riempie con `Settings::default()` grazie a `#[serde(default)]` sul suo campo.
 
 ## Prossimi argomenti
 
