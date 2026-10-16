@@ -515,6 +515,52 @@ saluta(s.clone());   // sposta una copia: s resta tua, ma il testo viene duplica
 
 Spostare non è sbagliato in sé. L'errore c'è solo se la variabile viene **usata dopo** lo spostamento. Quindi `saluta(s)` va bene come ultima operazione su `s`.
 
+### Esercizio 4: `Option`
+
+```rust
+fn dividi(a: i32, b: i32) -> Option<i32> {
+    if b == 0 {
+        None
+    } else {
+        Some(a / b)
+    }
+}
+
+fn main() {
+    match dividi(10, 2) {
+        Some(result) => println!("Result: {}", result),
+        None => println!("Cannot divide by zero!"),
+    }
+}
+```
+
+- `-> Option<i32>` dice nel tipo che la funzione può non avere un risultato: `Some(valore)` oppure `None`.
+- L'ultima espressione di un blocco è il valore restituito: niente `return` e niente `;` finale.
+- Il `match` deve coprire tutti i casi. Se si toglie il ramo `None` il compilatore dà `error[E0004]: non-exhaustive patterns: None not covered`. `todo!()`, suggerito dal compilatore, è un segnaposto che compila ma blocca il programma se ci si arriva: non va lasciato nel codice vero.
+
+### Esercizio 5: `Result`
+
+```rust
+fn dividi_res(a: i32, b: i32) -> Result<i32, String> {
+    if b == 0 {
+        Err(String::from("Cannot divide by zero!"))
+    } else {
+        Ok(a / b)
+    }
+}
+
+fn main() {
+    match dividi_res(10, 0) {
+        Ok(result) => println!("Result: {}", result),
+        Err(e) => println!("Error: {}", e),
+    }
+}
+```
+
+- `Result<i32, String>`: o va bene e c'è un `i32` dentro `Ok`, o va male e c'è una `String` con il motivo dentro `Err`.
+- Differenza con `Option`: `None` non porta informazioni, `Err(motivo)` porta con sé la spiegazione, che nasce dentro la funzione e arriva a chi la chiama.
+- `RawTunnel::build` in `src/config.rs` ha la stessa forma: `Result<Tunnel, String>`, con `Ok(tunnel)` se i campi sono giusti ed `Err("messaggio")` se qualcosa manca.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
