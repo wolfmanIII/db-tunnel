@@ -78,4 +78,4 @@ Invarianti da rispettare:
 ## Stato
 
 <!-- Aggiorna a ogni fase completata -->
-Fasi 1 e 2 completate. Prossima: fase 3 (health check). Dettagli, decisioni prese e cose rimandate in `HANDOFF.md`: leggilo a inizio sessione e aggiornalo a fine lavoro. Piano completo: spec §12.
+Fasi 1 e 2 completate. Fase 3 (health check) in corso. Dettagli, decisioni prese e cose rimandate in `HANDOFF.md`: leggilo a inizio sessione e aggiornalo a fine lavoro. Piano completo: spec §12.
