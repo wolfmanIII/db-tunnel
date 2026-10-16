@@ -632,6 +632,34 @@ Errore provato togliendo `#[derive(Debug)]`:
 
 Una capacità non esiste finché non la dai al tipo: `derive` la genera e il codice che la usa (qui `{:?}`) la richiama.
 
+### Esercizio 8: validare una porta
+
+Codice in `src/bin/esercizio8/main.rs`, da lanciare con `cargo run --bin esercizio8`.
+
+```rust
+fn valida_porta(p: i64) -> Result<u16, String> {
+    if p < 1024 || p > 65535 {
+        Err(format!("Porta {} non valida", p))
+    } else {
+        Ok(p as u16)
+    }
+}
+
+fn main() {
+    match valida_porta(8080) {
+        Ok(port) => println!("Porta valida: {}", port),
+        Err(e) => println!("Errore: {}", e),
+    }
+}
+```
+
+Risultati provati: `8080` dà `Ok(8080)`, `150` e `75000` danno `Err("Porta ... non valida")`.
+
+- `||` significa "oppure"; `&&` significa "e".
+- `format!` funziona come `println!` ma restituisce una `String` invece di stamparla. Serve a costruire il messaggio dell'`Err`.
+- `p as u16` converte un numero in un altro tipo. È sicuro solo se si è già controllato che il valore stia nell'intervallo, e qui il controllo precedente lo garantisce. Se i limiti fossero sbagliati, il compilatore non avviserebbe.
+- Lo stesso problema in `src/config.rs` (funzione `port`) è risolto con `u16::try_from(value)`, che converte e controlla il limite alto in un solo passaggio, restituendo un `Result`.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
