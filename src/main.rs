@@ -29,8 +29,15 @@ async fn main() -> anyhow::Result<()> {
             "  {} [{:?}] localhost:{} <- {}",
             t.name, t.engine, t.local_port, t.target
         );
-        let stato = health::check_postgres(t.local_port).await;
-        println!("    stato: {stato:?}");
+        let stato = match t.engine {
+            config::Engine::Postgres => health::check_postgres(t.local_port).await,
+            config::Engine::Mysql => health::check_mysql(t.local_port).await,
+        };
+        match stato {
+            health::Health::Ok => println!("    UP"),
+            health::Health::Refused(codice) => println!("    RIFIUTA (errore {codice})"),
+            health::Health::Down(motivo) => println!("    DOWN ({motivo})"),
+        }
     }
 
     match gcloud::active_account().await? {

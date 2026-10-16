@@ -31,3 +31,27 @@ pub async fn check_postgres(port: u16) -> Health {
         Err(_) => Health::Down("timeout".to_string()),
     }
 }
+
+async fn try_mysql(port: u16) -> std::io::Result<Health> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).await?;
+    let mut intestazione = [0u8; 4];
+    stream.read_exact(&mut intestazione).await?;
+    let mut contenuto = [0u8; 3];
+    stream.read_exact(&mut contenuto).await?;
+    match contenuto[0] {
+        0x0A => Ok(Health::Ok),
+        0xFF => Ok(Health::Refused(u16::from_le_bytes([
+            contenuto[1],
+            contenuto[2],
+        ]))),
+        altro => Ok(Health::Down(format!("risposta inattesa: {altro}"))),
+    }
+}
+
+pub async fn check_mysql(port: u16) -> Health {
+    match timeout(TIMEOUT, try_mysql(port)).await {
+        Ok(Ok(health)) => health,
+        Ok(Err(e)) => Health::Down(e.to_string()),
+        Err(_) => Health::Down("timeout".to_string()),
+    }
+}
