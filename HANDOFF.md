@@ -8,9 +8,9 @@ Riferimenti: `docs/db-tunnel-spec.md` (specifica), `CLAUDE.md` (regole di lavoro
 
 - Fase 1 (account gcloud): completata.
 - Fase 2 (config): completata. `src/config.rs` legge e valida il TOML, 17 test; `main` stampa i tunnel letti e l'account gcloud.
-- Fase 3 (health check e `status`): in corso. Fatto: `src/health.rs` con il tipo `Health` e `check_postgres` (timeout 3s), chiamato da `main` per ogni tunnel. Provato con il tunnel vero tramite `cloud-sql-proxy`: risponde `Ok`; senza proxy risponde `Down`. Scritto da Antonio, guidato passo per passo.
-- Da fare nella fase 3: controllo MySQL (spec §7.4), test di `health` con un `TcpListener` finto (spec §11), `status` con output `UP` / `DOWN` / `RIFIUTA (errore N)` ed exit code. Ora `main` tratta ogni tunnel come Postgres.
-- `clippy -D warnings` oggi non passa: `Health::Refused` non è mai creato e il testo di `Down` non è mai letto. Sparisce con MySQL e `status`.
+- Fase 3 (health check e `status`): in corso. Fatto: `src/health.rs` con il tipo `Health`, `check_postgres` e `check_mysql` (timeout 3s). `main` sceglie il controllo in base a `engine` e stampa `UP`, `DOWN (motivo)` o `RIFIUTA (errore N)`. Postgres provato con il tunnel vero tramite `cloud-sql-proxy`: `UP` col proxy, `DOWN` senza. MySQL **non provato** su un server vero. Scritto da Antonio, guidato passo per passo.
+- Da fare nella fase 3: test di `health` con un `TcpListener` finto (spec §11), che coprirebbe anche MySQL; il comando `status` vero (account gcloud e exit code `0`/`1`/`2`, spec §5). Oggi `main` stampa lo stato ma non ha sottocomandi né exit code 2.
+- `clippy -D warnings`, `cargo fmt --check` e i test passano.
 
 ## Decisioni prese
 
