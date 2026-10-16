@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 mod config;
 mod gcloud;
+mod health;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -28,6 +29,8 @@ async fn main() -> anyhow::Result<()> {
             "  {} [{:?}] localhost:{} <- {}",
             t.name, t.engine, t.local_port, t.target
         );
+        let stato = health::check_postgres(t.local_port).await;
+        println!("    stato: {stato:?}");
     }
 
     match gcloud::active_account().await? {
