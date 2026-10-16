@@ -450,6 +450,71 @@ check_interval = 5         # errore: campo sconosciuto
 
 I campi ammessi sono quelli scritti nella definizione della struct. `deny_unknown_fields` c'è anche su `RawConfig` e `RawTunnel`, quindi vale per tutto il file, non solo per `[settings]`. Se manca l'intera sezione `[settings]`, `RawConfig` la riempie con `Settings::default()` grazie a `#[serde(default)]` sul suo campo.
 
+## Esercizi svolti
+
+Il codice sta in `~/projects/rust-esercizi` (fuori dal repo).
+
+### Esercizio 1: `String` e `mut`
+
+```rust
+fn main() {
+    let mut s = String::from("Antonio");
+    s.push_str(" is learning Rust!");
+    println!("{}", s);
+}
+```
+
+`let mut` serve perché `push_str` modifica la `String`. Senza `mut` il compilatore protesta.
+
+### Esercizio 2: il prestito con `&`
+
+```rust
+fn main() {
+    let mut s = String::from("Antonio");
+    saluta(&s);
+    s.push_str(" is learning Rust!");
+    saluta(&s);
+}
+
+fn saluta(nome: &str) {
+    println!("{}", nome);
+}
+```
+
+`saluta(&s)` presta `s` solo per la durata della chiamata. Quando la funzione finisce, `s` è di nuovo tua: si può modificare con `push_str` e prestare ancora. Il parametro `nome: &str` accetta un `&String` senza bisogno di scrivere `&String`.
+
+### Esercizio 3: lo spostamento e l'errore E0382
+
+```rust
+fn main() {
+    let mut s = String::from("Antonio");
+    saluta(s);                              // senza &: s viene spostata
+    s.push_str(" is learning Rust!");       // errore: s non è più tua
+}
+
+fn saluta(nome: String) {                   // senza &: la funzione prende la proprietà
+    println!("{}", nome);
+}
+```
+
+Errore del compilatore, letto per pezzi:
+
+- `error[E0382]: borrow of moved value: 's'`: usi `s` dopo che è stata spostata.
+- `move occurs because 's' has type 'String', which does not implement the 'Copy' trait`: `String` non è `Copy`, quindi passarla per valore la sposta.
+- `value moved here` (riga della chiamata): dove la proprietà passa alla funzione.
+- `value borrowed here after move` (riga dopo): dove provi a usarla ormai persa.
+- `this parameter takes ownership of the value`: la causa è `nome: String` senza `&`.
+- `consider cloning the value`: il suggerimento è passare una copia con `.clone()`.
+
+Due modi per sistemare:
+
+```rust
+saluta(&s);          // presta: s resta tua (con fn saluta(nome: &str))
+saluta(s.clone());   // sposta una copia: s resta tua, ma il testo viene duplicato
+```
+
+Spostare non è sbagliato in sé. L'errore c'è solo se la variabile viene **usata dopo** lo spostamento. Quindi `saluta(s)` va bene come ultima operazione su `s`.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
