@@ -561,6 +561,32 @@ fn main() {
 - Differenza con `Option`: `None` non porta informazioni, `Err(motivo)` porta con sé la spiegazione, che nasce dentro la funzione e arriva a chi la chiama.
 - `RawTunnel::build` in `src/config.rs` ha la stessa forma: `Result<Tunnel, String>`, con `Ok(tunnel)` se i campi sono giusti ed `Err("messaggio")` se qualcosa manca.
 
+### Esercizio 6: l'operatore `?`
+
+```rust
+fn doppia_divisione(a: i32, b: i32, c: i32) -> Result<i32, String> {
+    let primo = dividi_res(a, b)?;
+    let secondo = dividi_res(primo, c)?;
+    Ok(secondo)
+}
+```
+
+- `dividi_res(a, b)?` fa questo: se il risultato è `Ok(v)` estrae `v` e il codice continua, se è `Err(e)` esce subito dalla funzione restituendo `Err(e)`. È una scorciatoia per un `match` con `return Err(e)`.
+- Dopo il `?`, `primo` è un `i32` normale: il `Result` è già stato aperto.
+- La funzione che usa `?` deve restituire a sua volta un `Result` (o un `Option` se il `?` è su un `Option`). Gli errori devono avere tipi compatibili: con `anyhow` quasi qualunque errore si converte.
+
+Risultati provati:
+
+| Chiamata | Cosa succede | Output |
+| --- | --- | --- |
+| `doppia_divisione(10, 2, 2)` | 10/2 = 5, poi 5/2 = 2 (divisione tra interi) | `Ok(2)` |
+| `doppia_divisione(10, 0, 2)` | la prima divisione fallisce, il `?` esce | `Err("Cannot divide by zero!")` |
+| `doppia_divisione(10, 2, 0)` | la prima va, la seconda fallisce, il `?` esce | `Err("Cannot divide by zero!")` |
+
+Gli ultimi due errori hanno lo stesso messaggio, quindi non si capisce quale divisione è fallita. Lo risolve `.context("...")` di `anyhow`, che aggiunge una riga di spiegazione man mano che l'errore risale.
+
+Nel progetto: `String::from_utf8(out.stdout).context("output di gcloud non UTF-8")?` in `src/gcloud.rs`.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
