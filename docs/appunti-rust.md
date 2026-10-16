@@ -587,6 +587,51 @@ Gli ultimi due errori hanno lo stesso messaggio, quindi non si capisce quale div
 
 Nel progetto: `String::from_utf8(out.stdout).context("output di gcloud non UTF-8")?` in `src/gcloud.rs`.
 
+### Esercizio 7: `struct`, `derive(Debug)` e prestito
+
+Da questo esercizio il codice sta in `src/bin/esercizio7/main.rs`. Cargo riconosce come programmi extra solo i file in `src/bin/`, e con più programmi nel progetto si lancia con `cargo run --bin esercizio7` (il vecchio `main.rs` è `cargo run --bin rust-esercizi`).
+
+```rust
+fn main() {
+    let t = Tunnel {
+        name: String::from("test-pg"),
+        port: 8080,
+    };
+    descrivi(&t);
+    println!("Tunnel: {:?}", t);
+}
+
+#[derive(Debug)]
+struct Tunnel {
+    name: String,
+    port: u16,
+}
+
+fn descrivi(t: &Tunnel) {
+    println!("Tunnel: name: {} - port: {}", t.name, t.port);
+}
+```
+
+Output:
+
+```text
+Tunnel: name: test-pg - port: 8080
+Tunnel: Tunnel { name: "test-pg", port: 8080 }
+```
+
+- `struct` definisce un tipo con campi con nome. I campi si leggono con `t.name` e `t.port`. `u16` è un intero senza segno da 0 a 65535, adatto a una porta.
+- `descrivi(t: &Tunnel)` prende un prestito: dopo la chiamata `t` è ancora usabile, e infatti la riga dopo la stampa intera.
+- `{:?}` stampa con la capacità `Debug`. Nell'output il secondo `Tunnel` è il nome del tipo, aggiunto da `Debug`. Il primo è il testo scritto nella stringa del `println!`.
+- Un campo mai letto genera un `warning` (`fields are never read`), non un errore. Sparisce quando qualche codice legge il campo.
+
+Errore provato togliendo `#[derive(Debug)]`:
+
+- `error[E0277]: 'Tunnel' doesn't implement 'Debug'`: il tipo non ha la capacità richiesta da `{:?}`.
+- `required by this formatting parameter`: indica che è il `{:?}` a pretenderla.
+- `consider annotating 'Tunnel' with '#[derive(Debug)]'`: la soluzione è rimettere la riga `derive`.
+
+Una capacità non esiste finché non la dai al tipo: `derive` la genera e il codice che la usa (qui `{:?}`) la richiama.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
