@@ -16,6 +16,9 @@ Pensati per chi programma da anni ma non conosce Rust. Ogni sigla è spiegata la
 - **`Tipo::funzione`**: il `::` accede a una funzione associata al tipo, come un metodo statico in Java o PHP. `String::from(...)` è la funzione `from` del tipo `String`.
 - **Macro**: nome seguito da `!` (per esempio `vec![1, 2, 3]`, `format!`, `ensure!`). Non è una funzione normale: il compilatore la espande in altro codice prima di compilare. Serve, per esempio, quando gli argomenti sono in numero variabile.
 - **`mut`**: parola chiave che rende modificabile una variabile (`let mut x`). Senza, in Rust non si può cambiare.
+- **Proprietario (owner)**: la variabile che tiene in mano un valore, come una persona con un foglio. Quando il proprietario esce dal suo blocco, il valore viene liberato. "`String` e `Vec` possiedono la loro memoria" vuol dire che il testo o l'elenco "è loro" e sparisce con loro.
+- **Consumare**: una funzione che prende un valore per valore (per esempio `fn build(self)`) lo consuma: dopo la chiamata chi l'ha chiamata non può più usarlo. È un move.
+- **Ramo (arm)**: una riga di un `match`, nella forma `caso => risultato`. Come un `case` di uno `switch`.
 
 ## 1. Ownership (proprietà della memoria)
 
@@ -44,7 +47,7 @@ In PHP o JS le due variabili punterebbero alla stessa stringa. In Rust no.
 
 - **Move**: `RawTunnel::build(self)` prende `self` per valore, quindi consuma il tunnel. Dopo la chiamata l'originale non esiste più.
 - **Clone**: in `validate` si fa `raw_tunnel.name.clone()` prima di chiamare `build`, perché il nome serve ancora per il messaggio d'errore e `build` si porta via `raw_tunnel`.
-- **Borrow**: `forbidden(&self.instance_connection_name, ...)` guarda il campo senza prenderlo. Per questo viene prima di `required(self.project, ...)`, che invece lo sposta.
+- **Borrow**: `forbidden(&self.instance_connection_name, ...)` guarda il campo senza prenderlo, mentre `required(self.project, ...)` lo sposta. Sono campi diversi e il compilatore controlla **campo per campo**: si può prestare un campo e spostarne un altro della stessa struct, in qualsiasi ordine. `forbidden` sta prima solo per fallire subito con il messaggio giusto.
 - **Tipi `Copy`**: `Engine` e `Mode` hanno `derive(Clone, Copy)`. Sono piccoli e si duplicano da soli, quindi si possono usare più volte senza `clone()`. Una `String` no.
 - **Parametri `&str` e `&Path`**: le funzioni che leggono soltanto prendono un riferimento, non vogliono possedere.
 
@@ -246,6 +249,101 @@ Perché si usa: `anyhow::Error` accetta qualunque tipo di errore. Scrivendo `Res
 | --- | --- | --- | --- |
 | Valore che può mancare | `Option<T>` | `Some(v)` / `None` | `match`, `ok_or` |
 | Operazione che può fallire | `Result<T, E>` | `Ok(v)` / `Err(e)` | `match`, `?` |
+
+## 4. Funzioni, valore restituito, `enum` e `match`
+
+Esempio da `src/config.rs`, riga 17:
+
+```rust
+impl Engine {
+    fn default_port(self) -> u16 {
+        match self {
+            Engine::Mysql => 3306,
+            Engine::Postgres => 5432,
+        }
+    }
+}
+```
+
+Serve a dare la porta di solito di un database, quando nel file di configurazione manca `remote_port`.
+
+### La firma: `fn nome(parametri) -> Tipo`
+
+- `fn` dichiara una funzione.
+- `->` si legge "restituisce". Dopo la freccia c'è il tipo del valore restituito. In Java il tipo si scrive prima del nome (`int defaultPort()`), in Rust dopo la freccia.
+- Senza freccia, la funzione restituisce `()`, cioè niente.
+
+### Tipi numerici interi
+
+Il nome dice se ha il segno e quanti bit usa:
+
+| Tipo | Segno | Valori possibili |
+| --- | --- | --- |
+| `u8` | no (`u` = unsigned) | 0 - 255 |
+| `u16` | no | 0 - 65535 |
+| `u32` | no | 0 - circa 4 miliardi |
+| `i32` | sì (`i` = integer) | circa da -2 a +2 miliardi |
+| `i64` | sì | numeri molto grandi, anche negativi |
+| `usize` | no | dipende dal computer, si usa per gli indici |
+
+Per le porte di rete si usa `u16` perché l'intervallo (0-65535) coincide con quello delle porte: un valore come `-5` o `70000` non può esistere in quel tipo. In `config.rs` la porta si legge come `i64` (il tipo dei numeri TOML) e `port()` la converte in `u16` solo dopo averla controllata, così il messaggio d'errore può dire in quale tunnel è sbagliata.
+
+### Come restituire un valore
+
+Due modi, che fanno la stessa cosa:
+
+```rust
+fn porta() -> u16 {
+    5432            // ultima riga, senza punto e virgola: viene restituita
+}
+
+fn porta_con_return() -> u16 {
+    return 5432;    // return esplicito, con punto e virgola
+}
+```
+
+- L'**ultima espressione senza `;`** è il valore restituito. È lo stile normale in Rust.
+- `return valore;` serve per uscire **prima della fine**, per esempio dentro un `if`.
+- Il `;` trasforma un'espressione in un'istruzione, che non produce valore. Scrivere `5432;` come ultima riga fa fallire la compilazione con `mismatched types`: la funzione promette `u16` ma restituisce `()`.
+
+```rust
+fn porta(vuoi_mysql: bool) -> u16 {
+    if vuoi_mysql {
+        return 3306;    // esce subito
+    }
+    5432                // altrimenti arriva qui
+}
+```
+
+### `match` e `=>`
+
+`=>` non è `return`. Appartiene al `match` e collega un caso al suo risultato: "se il caso è questo, il valore è questo".
+
+- Il `match` è un'**espressione**: produce un valore.
+- In `default_port` il `match` è l'ultima espressione senza `;`, quindi il suo valore diventa quello della funzione.
+- La versione con `return` esplicito è equivalente, ma non è lo stile usuale:
+
+```rust
+match self {
+    Engine::Mysql => return 3306,
+    Engine::Postgres => return 5432,
+}
+```
+
+`=>` si usa in qualunque `match`, anche quando non si restituisce niente. In `src/main.rs`:
+
+```rust
+Some(acc) => println!("gcloud: loggato come {acc}"),
+```
+
+Il `match` deve coprire **tutti i casi**, altrimenti non compila (`non-exhaustive patterns`). Se si aggiunge `Mariadb` all'`enum` e si dimentica il ramo corrispondente, il compilatore indica il punto esatto. In uno `switch` di Java o PHP lo si scoprirebbe solo a runtime.
+
+### `enum` e `impl`
+
+- Un **`enum`** è un tipo con un numero chiuso di valori. `Engine` può essere solo `Mysql` o `Postgres`: un refuso come `"postgress"` non compila, mentre con una stringa passerebbe. Come l'`enum` di Java o di PHP 8.1.
+- `impl Engine { ... }` raccoglie le funzioni che appartengono al tipo, come i metodi di una classe. Si chiamano come `engine.default_port()`.
+- `self` è il valore su cui si chiama il metodo. Qui è preso per valore, ma `Engine` è `Copy` (sezione 2), quindi chiamare `default_port` non lo consuma: `engine` resta usabile dopo.
+- `Engine::Mysql` usa `::` per nominare una variante, come per le funzioni associate (`String::from`).
 
 ## Prossimi argomenti
 
