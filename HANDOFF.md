@@ -9,8 +9,9 @@ Riferimenti: `docs/db-tunnel-spec.md` (specifica), `CLAUDE.md` (regole di lavoro
 - Fase 1 (account gcloud): completata.
 - Fase 2 (config): completata. `src/config.rs` legge e valida il TOML, 17 test; `main` stampa i tunnel letti e l'account gcloud.
 - Fase 3 (health check e `status`): in corso. Fatto: `src/health.rs` con il tipo `Health`, `check_postgres` e `check_mysql` (timeout 3s). `main` sceglie il controllo in base a `engine` e stampa `UP`, `DOWN (motivo)` o `RIFIUTA (errore N)`. Postgres provato con il tunnel vero tramite `cloud-sql-proxy`: `UP` col proxy, `DOWN` senza. MySQL **non provato** su un server vero. Scritto da Antonio, guidato passo per passo.
-- Da fare nella fase 3: test di `health` con un `TcpListener` finto (spec §11), che coprirebbe anche MySQL; il comando `status` vero (account gcloud e exit code `0`/`1`/`2`, spec §5). Oggi `main` stampa lo stato ma non ha sottocomandi né exit code 2.
-- `clippy -D warnings`, `cargo fmt --check` e i test passano.
+- Test di `health` fatti (spec §11), con un `TcpListener` finto su porta effimera: 11 test, MySQL (handshake valido, ERR 1129, risposta inattesa, connessione chiusa, porta chiusa, silenzio con timeout di 3s) e Postgres (`N`, `S`, risposta inattesa, connessione chiusa, porta chiusa). Il MySQL è quindi coperto dai test anche se non provato su un server vero. I test non verificano i byte che il client invia (la `SSLRequest`).
+- Da fare nella fase 3: il comando `status` vero (account gcloud e exit code `0`/`1`/`2`, spec §5). Oggi `main` stampa lo stato ma non ha sottocomandi né exit code 2.
+- `clippy -D warnings`, `cargo fmt --check` e i 30 test passano (la suite dura 3s per il test del timeout).
 
 ## Decisioni prese
 
