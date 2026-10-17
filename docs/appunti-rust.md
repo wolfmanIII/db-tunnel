@@ -6,21 +6,21 @@ Pensati per chi programma da anni ma non conosce Rust. Ogni sigla è spiegata la
 
 - **Garbage collector (GC)**: meccanismo di Java, C#, PHP, Python, JS, Go che libera la memoria da solo mentre il programma gira. Rust non ce l'ha.
 - **Compilatore**: il programma che traduce il codice in eseguibile. In Rust è molto severo e rifiuta di compilare codice che violerebbe le regole sulla memoria.
-- **Move (spostamento)**: passare un valore a qualcun altro, perdendolo.
-- **Borrow (prestito)**: dare a qualcun altro il permesso di guardare un valore, senza perderlo. Si scrive con `&`.
+- **Move**: passare un valore a qualcun altro, perdendolo.
+- **Borrow**: dare a qualcun altro il permesso di guardare un valore, senza perderlo. Si scrive con `&`.
 - **Clone**: copia esplicita di un valore, scritta `.clone()`.
-- **`#[derive(Clone, Copy)]`**: `#[ ... ]` è un'annotazione sopra una definizione, come `@Override` in Java o `[Serializable]` in C#. `derive` significa "genera il codice per me" e tra parentesi c'è l'elenco delle capacità (in Rust: *trait*, simili alle interfacce di Java) che il tipo sotto ottiene senza scriverle a mano. `Clone` abilita `.clone()`. `Copy` fa sì che l'assegnazione copi invece di spostare.
+- **`#[derive(Clone, Copy)]`**: `#[ ... ]` è un attribute sopra una definizione, come `@Override` in Java o `[Serializable]` in C#. `derive` significa "genera il codice per me" e tra parentesi c'è l'elenco dei trait (simili alle interfacce di Java) che il tipo sotto ottiene senza scriverli a mano. `Clone` abilita `.clone()`. `Copy` fa sì che l'assegnazione copi invece di spostare.
 - **`T` ed `E` (generici)**: segnaposto per un tipo, come in Java `List<T>`. In `Result<T, E>`, `T` è il tipo del valore di successo (dentro `Ok`) ed `E` quello dell'errore (dentro `Err`). In `Option<T>`, `T` è il tipo del valore dentro `Some`. Esempio: `Result<Tunnel, String>` ha `T = Tunnel` ed `E = String`.
 - **Move parziale**: spostare un solo campo da una struct (per esempio `let name = raw_tunnel.name;`). Gli altri campi restano usabili, ma la struct intera no: non puoi più passarla a una funzione che la prende per valore, come `raw_tunnel.build()`. Per questo in `validate` si usa `.clone()` sul nome.
 - **`&str` e `String`**: due tipi di testo. `&str` (`"ciao"`) è testo fisso in sola lettura, che si guarda soltanto. `String` è testo posseduto, che ha i metodi per essere modificato e allungato, ma solo se la variabile è dichiarata `mut` (`let mut s = String::from("ciao");`). Un `&str` non si modifica mai, nemmeno con `mut`. `String::from("ciao")`, `"ciao".to_string()` e `"ciao".into()` copiano un `&str` dentro una `String`.
 - **`Tipo::funzione`**: il `::` accede a una funzione associata al tipo, come un metodo statico in Java o PHP. `String::from(...)` è la funzione `from` del tipo `String`.
 - **Macro**: nome seguito da `!` (per esempio `vec![1, 2, 3]`, `format!`, `ensure!`). Non è una funzione normale: il compilatore la espande in altro codice prima di compilare. Serve, per esempio, quando gli argomenti sono in numero variabile.
 - **`mut`**: parola chiave che rende modificabile una variabile (`let mut x`). Senza, in Rust non si può cambiare.
-- **Proprietario (owner)**: la variabile che tiene in mano un valore, come una persona con un foglio. Quando il proprietario esce dal suo blocco, il valore viene liberato. "`String` e `Vec` possiedono la loro memoria" vuol dire che il testo o l'elenco "è loro" e sparisce con loro.
+- **Owner**: la variabile che tiene in mano un valore, come una persona con un foglio. Quando l'owner esce dal suo blocco, il valore viene liberato. "`String` e `Vec` possiedono la loro memoria" vuol dire che il testo o l'elenco "è loro" e sparisce con loro.
 - **Consumare**: una funzione che prende un valore per valore (per esempio `fn build(self)`) lo consuma: dopo la chiamata chi l'ha chiamata non può più usarlo. È un move.
 - **Ramo (arm)**: una riga di un `match`, nella forma `caso => risultato`. Come un `case` di uno `switch`.
 
-## 1. Ownership (proprietà della memoria)
+## 1. Ownership
 
 Differenza di fondo rispetto a Java, C#, PHP:
 
@@ -29,7 +29,7 @@ Differenza di fondo rispetto a Java, C#, PHP:
 
 Tre regole:
 
-1. Ogni valore ha **un solo proprietario**.
+1. Ogni valore ha **un solo owner**.
 2. Assegnare o passare un valore a una funzione lo **sposta**: l'originale non è più usabile.
 3. Per usarlo senza spostarlo si **presta** un riferimento: `&T` (sola lettura, anche in più punti) oppure `&mut T` (modifica, ma uno solo alla volta e nessun lettore nel frattempo).
 
@@ -62,7 +62,7 @@ Perché: se qualcuno modifica mentre un altro legge, il lettore può trovarsi co
 
 ```rust
 let mut v = vec![1, 2, 3];
-let primo = &v[0];      // prestito in lettura, ancora vivo qui sotto
+let primo = &v[0];      // borrow in lettura, ancora vivo qui sotto
 v.push(4);              // push modifica v (&mut): errore, c'è un lettore attivo
 println!("{primo}");    // ultimo uso di primo
 ```
@@ -79,16 +79,16 @@ In `src/config.rs`:
 
 Togli `.clone()` dalla riga `let name = raw_tunnel.name.clone();` in `validate`, scrivendo `let name = raw_tunnel.name;`. Prima di compilare, scrivi dove pensi che si rompa e quale regola viene violata. Poi lancia `cargo build` e confronta con il messaggio del compilatore.
 
-## 2. Tipi e capacità (`derive`, `Copy`, `Clone`)
+## 2. Tipi e trait (`derive`, `Copy`, `Clone`)
 
-Una **capacità** (in Rust: *trait*, simile a un'interfaccia di Java) è qualcosa che un tipo sa fare: essere copiato, stampato, confrontato con `==`, letto dal TOML. Le capacità appartengono al **tipo**, non alla variabile: `let n: u16 = 5` ha quelle di `u16`.
+Un **trait** (simile a un'interfaccia di Java) è qualcosa che un tipo sa fare: essere copiato, stampato, confrontato con `==`, letto dal TOML. I trait appartengono al **tipo**, non alla variabile: `let n: u16 = 5` ha i trait di `u16`.
 
-### Da dove arrivano le capacità
+### Da dove arrivano i trait
 
 - **Tipi standard** (`u16`, `bool`, `String`, `Vec`): le hanno già, e sono fisse.
 - **Tipi che scrivi tu** (`struct` ed `enum`): partono senza nessuna. Le aggiungi con `#[derive(...)]` sopra la definizione, e il compilatore scrive il codice al posto tuo.
 
-`#[derive(Clone, Copy)]` si legge: "per il tipo qui sotto, genera la capacità di essere clonato e copiato". È un'annotazione, come `@Override` in Java. In Rust si chiama *attributo*.
+`#[derive(Clone, Copy)]` si legge: "per il tipo qui sotto, genera i trait `Clone` e `Copy`, cioè la possibilità di essere clonato e copiato". È un attribute, come `@Override` in Java.
 
 ### Tipi standard a confronto
 
@@ -98,9 +98,9 @@ Una **capacità** (in Rust: *trait*, simile a un'interfaccia di Java) è qualcos
 | `String` | no | sì | sì | sì |
 | `Vec<T>` | no | sì | sì | sì |
 
-### Le capacità usate nel progetto
+### I trait usati nel progetto
 
-| Capacità | A cosa serve | Quando gira |
+| Trait | A cosa serve | Quando gira |
 | --- | --- | --- |
 | `Debug` | stampare il valore per capire cosa contiene | quando scrivi `{:?}` |
 | `Clone` | duplicare il valore, contenuto compreso | quando scrivi `.clone()` |
@@ -110,8 +110,8 @@ Una **capacità** (in Rust: *trait*, simile a un'interfaccia di Java) è qualcos
 
 ### Regole da ricordare
 
-1. `derive` **dà** la capacità ma non la esegue. Resta ferma finché una riga di codice non la richiama. L'unica eccezione è `Copy`, che agisce da sola a ogni `=`.
-2. Non esiste una scelta tra capacità. Ognuna ha il suo punto d'uso e non entra in competizione con le altre.
+1. `derive` **dà** il trait ma non lo esegue. Resta ferma finché una riga di codice non la richiama. L'unica eccezione è `Copy`, che agisce da sola a ogni `=`.
+2. Non esiste una scelta tra trait. Ognuno ha il suo punto d'uso e non entra in competizione con gli altri.
 3. Regola di `=`: se il tipo è `Copy` copia, altrimenti sposta. Non c'è altro.
 4. `Copy` si può dare solo se **tutti i campi** sono `Copy`. Un tipo con un campo `String` non può averlo.
 5. `Copy` richiede anche `Clone`, quindi vanno scritti insieme. Su `Engine` il `Clone` non lo chiama nessuno: c'è solo perché `Copy` lo pretende.
@@ -123,7 +123,7 @@ Possiedono un blocco di memoria. Una copia automatica darebbe a due variabili lo
 
 ### I tipi del progetto (`src/config.rs`)
 
-| Tipo | Capacità | Perché |
+| Tipo | Trait | Perché |
 | --- | --- | --- |
 | `Engine`, `Mode` | `Debug, Clone, Copy, PartialEq, Eq, Deserialize` | piccoli, copiabili, letti dal TOML |
 | `Settings` | `Debug, PartialEq, Eq, Deserialize` con `derive`, più `Default` scritto a mano | letto dal TOML e confrontato nei test, ma contiene più campi e non serve copiarlo. I valori di partenza sono 10, 3 e 20, non zero |
@@ -131,32 +131,32 @@ Possiedono un blocco di memoria. Una copia automatica darebbe a due variabili lo
 | `Target` | `Debug, PartialEq, Eq` con `derive`, più `Display` scritto a mano | la stampa leggibile (`ssh progetto/zona/vm -> host:porta`) non esiste come `derive` |
 | `RawConfig`, `RawTunnel` | `Debug, Deserialize` | forma grezza del TOML, letta dal file |
 
-### Da dove viene una capacità
+### Da dove viene un trait
 
-| Capacità | Da dove viene |
+| Trait | Da dove viene |
 | --- | --- |
 | `Default`, `Clone`, `Copy`, `Debug`, `Display`, `PartialEq`, `Eq` | libreria standard di Rust, sempre disponibile |
 | `Deserialize` | libreria `serde`, per questo in cima al file c'è `use serde::Deserialize;` |
 
-Un modo per capirlo: se in cima al file c'è un `use` che nomina la capacità, viene da una libreria esterna. Se non c'è, viene da Rust.
+Un modo per capirlo: se in cima al file c'è un `use` che nomina il trait, viene da una libreria esterna. Se non c'è, viene da Rust.
 
 ### `derive` o `impl` a mano: tutto o niente
 
-- `#[derive(...)]` genera la capacità intera con il comportamento standard. Non si può dire "standard, tranne questo metodo".
-- Se serve cambiare anche un solo metodo, la capacità **non** va nel `derive`: si scrive `impl Capacità for Tipo` a mano.
-- Derivare e scrivere a mano la stessa capacità sullo stesso tipo è un errore di compilazione (`conflicting implementations`).
-- Capacità diverse sullo stesso tipo si possono mescolare, alcune con `derive` e altre a mano.
+- `#[derive(...)]` genera il trait intero con il comportamento standard. Non si può dire "standard, tranne questo metodo".
+- Se serve cambiare anche un solo metodo, il trait **non** va nel `derive`: si scrive `impl Trait for Tipo` a mano.
+- Derivare e scrivere a mano lo stesso trait sullo stesso tipo è un errore di compilazione (`conflicting implementations`).
+- Trait diversi sullo stesso tipo si possono mescolare, alcuni con `derive` e altri a mano.
 
 Esempi in `src/config.rs`:
 
 - `Settings`: `Debug`, `PartialEq`, `Eq` e `Deserialize` con `derive`, `Default` a mano. Con `derive(Default)` i numeri varrebbero tutti `0`, cioè un controllo ogni 0 secondi.
 - `Target`: `Display` a mano, per decidere come si stampa.
 
-### Una capacità può avere più metodi
+### Un trait può avere più metodi
 
-Il numero dipende dalla capacità. Un metodo è una funzione che appartiene a un tipo.
+Il numero dipende dal trait. Un metodo è una funzione che appartiene a un tipo.
 
-| Capacità | Metodi |
+| Trait | Metodi |
 | --- | --- |
 | `Default` | 1: `default()` |
 | `Clone` | 1: `clone()` |
@@ -169,7 +169,7 @@ Scrivendo `impl` a mano si devono scrivere i metodi **obbligatori**. Quelli già
 
 ### `Default`: i valori di partenza
 
-La capacità `Default` ha un solo metodo, `default()`, che restituisce i valori di partenza di un tipo. Viene dalla libreria standard, non da `serde`.
+Il trait `Default` ha un solo metodo, `default()`, che restituisce i valori di partenza di un tipo. Viene dalla libreria standard, non da `serde`.
 
 ```rust
 impl Default for Settings {
@@ -210,7 +210,7 @@ let x = n.unwrap_or_default();   // se n è None, vale il default del tipo (0 pe
 ### `mut` e `&mut`: non sono la stessa cosa
 
 - `let mut a`: lo scrivi tu. Dice "questa variabile si può modificare".
-- `&mut a`: il prestito con permesso di modifica. Spesso non lo scrivi: lo crea Rust quando chiami un metodo che modifica, come `tunnels.push(x)`. Per questo nel progetto vedi `let mut`, ma mai la scritta `&mut`.
+- `&mut a`: il borrow con permesso di modifica. Spesso non lo scrivi: lo crea Rust quando chiami un metodo che modifica, come `tunnels.push(x)`. Per questo nel progetto vedi `let mut`, ma mai la scritta `&mut`.
 
 ## 3. Assenza di valore ed errori: `Option`, `Result`, `?`
 
@@ -450,6 +450,50 @@ check_interval = 5         # errore: campo sconosciuto
 
 I campi ammessi sono quelli scritti nella definizione della struct. `deny_unknown_fields` c'è anche su `RawConfig` e `RawTunnel`, quindi vale per tutto il file, non solo per `[settings]`. Se manca l'intera sezione `[settings]`, `RawConfig` la riempie con `Settings::default()` grazie a `#[serde(default)]` sul suo campo.
 
+## Corrispondenze con C e PHP
+
+Le equivalenze sono **approssimazioni**: servono ad agganciare i concetti nuovi a quelli già noti, non a dire che sono la stessa cosa. La domanda che sta sotto tutto: **chi possiede questo dato, e chi lo libera?** Rust risponde sempre: l'owner, alla fine del suo scope.
+
+### Per chi conosce il C
+
+| Rust | Equivalente in C |
+| --- | --- |
+| `String` | un `char*` ottenuto con `malloc`, più lunghezza e capacità, liberato da solo a fine scope |
+| `&str` | `const char*` più lunghezza: punta a un testo che appartiene a qualcun altro |
+| move (`let b = a`) | passare l'ownership di un puntatore `malloc`ato: dopo, `a` è un puntatore che non va più toccato, e il compilatore lo impedisce |
+| `.clone()` | `malloc` più `memcpy`: copia profonda |
+| `&T` | `const T*` |
+| `&mut T` | `T*` con la garanzia che nessun altro puntatore punti allo stesso dato |
+| `Option<T>` | puntatore che può essere `NULL`, ma il controllo è obbligatorio |
+| `Result<T, E>` | codice di ritorno più valore, in un solo tipo |
+| `?` | `if (err) return err;` |
+| `enum` con dati e `match` | *tagged union* (un `union` più il campo che dice quale variante è attiva) e `switch` su di essa |
+| `Copy` | una `struct` piccola passata per valore |
+| borrow checker | il controllo, a compile time, che nessuno usi un puntatore dopo la `free` o durante una modifica |
+
+### Per chi conosce il PHP
+
+| Rust | Equivalente in PHP |
+| --- | --- |
+| `let` (variabile normale) | in PHP ogni variabile è modificabile: l'immutabilità di Rust si avvicina a `const` e a `readonly` |
+| `let mut` | una variabile PHP normale |
+| `&mut T` | un parametro per riferimento: `function f(array &$a)` |
+| `&T` | nessun equivalente diretto: in PHP un parametro per valore non si può modificare, ma nessuno garantisce che nessun altro lo modifichi |
+| `String` e `Vec` (move) | `$b = $a` con oggetti condivide lo stesso oggetto. In Rust, dopo il move, `a` non è più utilizzabile: il dato ha un solo owner |
+| `Copy` (numeri, `bool`) | `int`, `float`, `bool` in PHP, copiati per valore |
+| `.clone()` | `clone $oggetto`, oppure la copia di un array |
+| `Option<T>` | tipo nullable: `?string`. Differenza: in Rust il compilatore ti obbliga a gestire il caso "vuoto" |
+| `Result<T, E>` | funzione che restituisce un valore oppure lancia un'eccezione. In Rust l'errore è nel tipo restituito, non nasce da un `throw` |
+| `?` | come lasciar risalire un'eccezione senza scrivere `catch`: se c'è un errore, la funzione esce subito e lo passa a chi l'ha chiamata |
+| `match` | il `match` di PHP 8 (stesso nome), ma con estrazione dei contenuti e controllo che tutti i casi siano coperti |
+| `[$a, $b] = [1, 2]` | l'estrazione per posizione che fa il pattern `Ok(v)` |
+| `struct` | classe con soli campi pubblici |
+| `#[derive(Debug)]` e `{:?}` | `var_dump` o `print_r` |
+| `as` | cast: `(int)$x`. `u16::try_from(x)` è più vicino a una validazione che può fallire (`filter_var`) |
+| `println!` e `eprintln!` | `echo` e `fwrite(STDERR, ...)` |
+| `Cargo.toml` e `cargo` | `composer.json` e `composer` |
+| `use` | `use` dei namespace |
+
 ## Esercizi svolti
 
 Il codice sta in `~/projects/rust-esercizi` (fuori dal repo).
@@ -466,7 +510,7 @@ fn main() {
 
 `let mut` serve perché `push_str` modifica la `String`. Senza `mut` il compilatore protesta.
 
-### Esercizio 2: il prestito con `&`
+### Esercizio 2: il borrow con `&`
 
 ```rust
 fn main() {
@@ -483,7 +527,7 @@ fn saluta(nome: &str) {
 
 `saluta(&s)` presta `s` solo per la durata della chiamata. Quando la funzione finisce, `s` è di nuovo tua: si può modificare con `push_str` e prestare ancora. Il parametro `nome: &str` accetta un `&String` senza bisogno di scrivere `&String`.
 
-### Esercizio 3: lo spostamento e l'errore E0382
+### Esercizio 3: il move e l'errore E0382
 
 ```rust
 fn main() {
@@ -492,7 +536,7 @@ fn main() {
     s.push_str(" is learning Rust!");       // errore: s non è più tua
 }
 
-fn saluta(nome: String) {                   // senza &: la funzione prende la proprietà
+fn saluta(nome: String) {                   // senza &: la funzione prende l'ownership
     println!("{}", nome);
 }
 ```
@@ -501,7 +545,7 @@ Errore del compilatore, letto per pezzi:
 
 - `error[E0382]: borrow of moved value: 's'`: usi `s` dopo che è stata spostata.
 - `move occurs because 's' has type 'String', which does not implement the 'Copy' trait`: `String` non è `Copy`, quindi passarla per valore la sposta.
-- `value moved here` (riga della chiamata): dove la proprietà passa alla funzione.
+- `value moved here` (riga della chiamata): dove l'ownership passa alla funzione.
 - `value borrowed here after move` (riga dopo): dove provi a usarla ormai persa.
 - `this parameter takes ownership of the value`: la causa è `nome: String` senza `&`.
 - `consider cloning the value`: il suggerimento è passare una copia con `.clone()`.
@@ -513,7 +557,7 @@ saluta(&s);          // presta: s resta tua (con fn saluta(nome: &str))
 saluta(s.clone());   // sposta una copia: s resta tua, ma il testo viene duplicato
 ```
 
-Spostare non è sbagliato in sé. L'errore c'è solo se la variabile viene **usata dopo** lo spostamento. Quindi `saluta(s)` va bene come ultima operazione su `s`.
+Un move non è sbagliato in sé. L'errore c'è solo se la variabile viene **usata dopo** il move. Quindi `saluta(s)` va bene come ultima operazione su `s`.
 
 ### Esercizio 4: `Option`
 
@@ -587,7 +631,7 @@ Gli ultimi due errori hanno lo stesso messaggio, quindi non si capisce quale div
 
 Nel progetto: `String::from_utf8(out.stdout).context("output di gcloud non UTF-8")?` in `src/gcloud.rs`.
 
-### Esercizio 7: `struct`, `derive(Debug)` e prestito
+### Esercizio 7: `struct`, `derive(Debug)` e borrow
 
 Da questo esercizio il codice sta in `src/bin/esercizio7/main.rs`. Cargo riconosce come programmi extra solo i file in `src/bin/`, e con più programmi nel progetto si lancia con `cargo run --bin esercizio7` (il vecchio `main.rs` è `cargo run --bin rust-esercizi`).
 
@@ -620,17 +664,17 @@ Tunnel: Tunnel { name: "test-pg", port: 8080 }
 ```
 
 - `struct` definisce un tipo con campi con nome. I campi si leggono con `t.name` e `t.port`. `u16` è un intero senza segno da 0 a 65535, adatto a una porta.
-- `descrivi(t: &Tunnel)` prende un prestito: dopo la chiamata `t` è ancora usabile, e infatti la riga dopo la stampa intera.
-- `{:?}` stampa con la capacità `Debug`. Nell'output il secondo `Tunnel` è il nome del tipo, aggiunto da `Debug`. Il primo è il testo scritto nella stringa del `println!`.
+- `descrivi(t: &Tunnel)` prende un borrow: dopo la chiamata `t` è ancora usabile, e infatti la riga dopo la stampa intera.
+- `{:?}` stampa con il trait `Debug`. Nell'output il secondo `Tunnel` è il nome del tipo, aggiunto da `Debug`. Il primo è il testo scritto nella stringa del `println!`.
 - Un campo mai letto genera un `warning` (`fields are never read`), non un errore. Sparisce quando qualche codice legge il campo.
 
 Errore provato togliendo `#[derive(Debug)]`:
 
-- `error[E0277]: 'Tunnel' doesn't implement 'Debug'`: il tipo non ha la capacità richiesta da `{:?}`.
+- `error[E0277]: 'Tunnel' doesn't implement 'Debug'`: il tipo non ha il trait richiesto da `{:?}`.
 - `required by this formatting parameter`: indica che è il `{:?}` a pretenderla.
 - `consider annotating 'Tunnel' with '#[derive(Debug)]'`: la soluzione è rimettere la riga `derive`.
 
-Una capacità non esiste finché non la dai al tipo: `derive` la genera e il codice che la usa (qui `{:?}`) la richiama.
+Un trait non esiste finché non lo dai al tipo: `derive` lo genera e il codice che lo usa (qui `{:?}`) lo richiama.
 
 ### Esercizio 8: validare una porta
 
@@ -660,7 +704,7 @@ Risultati provati: `8080` dà `Ok(8080)`, `150` e `75000` danno `Err("Porta ... 
 - `p as u16` converte un numero in un altro tipo. È sicuro solo se si è già controllato che il valore stia nell'intervallo, e qui il controllo precedente lo garantisce. Se i limiti fossero sbagliati, il compilatore non avviserebbe.
 - Lo stesso problema in `src/config.rs` (funzione `port`) è risolto con `u16::try_from(value)`, che converte e controlla il limite alto in un solo passaggio, restituendo un `Result`.
 
-### Esercizio 9: i pattern del `match` (`Ok(v)`, guardia `if`, `_`)
+### Esercizio 9: i pattern del `match` (`Ok(v)`, guard `if`, `_`)
 
 Codice in `src/bin/esercizio9/main.rs`. Il punto che ha richiesto più tempo è come funziona questo `match`:
 
@@ -678,7 +722,7 @@ Da dove arriva `v`, passo per passo, con `p = 15432`:
 1. `u16::try_from(p)` converte `p` (un `i64`) in `u16` e produce `Ok(15432)`. Se il numero non ci sta (per esempio `70000` o `-1`) produce `Err(...)`.
 2. Il `match` esamina quel valore: è quello scritto subito dopo la parola `match`.
 3. Il pattern `Ok(v)` combacia con `Ok(15432)`: `v` viene dichiarata e riceve `15432`. Il tipo di `v` è `u16`.
-4. L'`if v >= 1024` (guardia) è una condizione in più sul ramo.
+4. L'`if v >= 1024` (guard) è una condizione in più sul ramo.
 5. Il valore a destra della freccia, `Ok(v)`, crea un `Ok` nuovo con il numero e lo restituisce.
 
 Cosa ricordare:
@@ -698,6 +742,60 @@ Cosa ricordare:
 - **Perché l'`Ok(v)` a destra:** la funzione promette un `Result`, ma `v` da sola è un `u16`. Va rimessa in un `Ok`.
 - **`_` è un pattern che significa "qualunque altro caso".** Non crea variabili. Va messo per ultimo, perché i rami si provano dall'alto in basso e vince il primo che combacia. Il `match` deve coprire tutti i casi (altrimenti `E0004`): qui `_` copre i casi `Err` e `Ok` con valore sotto 1024. `Ok(_)` e `Err(_)` si usano quando il contenuto non serve.
 - **`as` contro `try_from`.** `p as u16` converte sempre, anche quando il numero non ci sta (`70000 as u16` dà `4464`, senza errori). `u16::try_from(p)` restituisce un `Result` e ti dice se la conversione è riuscita.
+
+### Esercizio 10: mettere insieme i pezzi
+
+Codice in `src/bin/esercizio10/main.rs`. Una funzione che costruisce un `Tunnel` solo se nome e porta sono validi, come fa `RawTunnel::build` in `src/config.rs`.
+
+```rust
+#[derive(Debug)]
+struct Tunnel {
+    name: String,
+    port: u16,
+}
+
+fn crea_tunnel(name: &str, port: i64) -> Result<Tunnel, String> {
+    let p = valida_porta(port)?;
+    let n = valida_name(name)?;
+    Ok(Tunnel {
+        name: n.to_string(),
+        port: p,
+    })
+}
+
+fn valida_name(name: &str) -> Result<&str, String> {
+    if name.trim().is_empty() {
+        Err(String::from("Nome non valido: vuoto"))
+    } else {
+        Ok(name)
+    }
+}
+```
+
+`valida_porta` è quella dell'esercizio 9.
+
+- **Una funzione per ogni controllo** (single responsibility). `crea_tunnel` non controlla niente da sola: chiama `valida_porta` e `valida_name` e le mette in fila con il `?`. Se una fallisce, `crea_tunnel` esce subito con quell'errore. È lo stesso schema di `config.rs` (`port`, `required`, `forbidden`, `check_connection_name`, tutte chiamate da `build`).
+- **`trim()`** è un metodo di `&str` che toglie gli spazi ai lati. `name.trim().is_empty()` è vero anche per un nome fatto di soli spazi. Con il solo `is_empty()` il nome `"  "` sarebbe passato come valido.
+- **`n.to_string()`**: il campo `name` della struct è una `String`, mentre `n` è un `&str`. Per possedere il testo serve una copia.
+- **Provate le tre strade:** nome e porta giusti danno `Ok(Tunnel {...})`, nome vuoto dà `Err("Nome non valido: vuoto")`, porta 80 dà `Err("Porta non valida: 80")`.
+
+#### Riferimenti nel valore restituito (lifetime)
+
+`valida_name` restituisce `Result<&str, String>`: il `&str` è lo **stesso testo** ricevuto come borrow, senza copia. Rust richiede di sapere fino a quando quel riferimento è valido. Dietro le quinte la firma completa è:
+
+```rust
+fn valida_name<'a>(name: &'a str) -> Result<&'a str, String>
+```
+
+`'a` è un'etichetta (*lifetime*) che dice: "il `&str` restituito vive quanto il `&str` ricevuto". Con **un solo** argomento a riferimento il legame è ovvio e il compilatore la aggiunge da solo, per questo nel codice si scrive la forma corta e non serve fare altro.
+
+L'etichetta va scritta a mano solo quando i riferimenti in ingresso sono due o più e il compilatore non può sapere a quale sia legato quello restituito:
+
+```rust
+fn piu_lungo(a: &str, b: &str) -> &str   // errore: restituisce a o b?
+```
+
+Qui la soluzione sarebbe `fn piu_lungo<'a>(a: &'a str, b: &'a str) -> &'a str`. Negli esercizi e nella maggior parte del progetto non capita.
 
 ## Prossimi argomenti
 
