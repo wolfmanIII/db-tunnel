@@ -660,6 +660,45 @@ Risultati provati: `8080` dà `Ok(8080)`, `150` e `75000` danno `Err("Porta ... 
 - `p as u16` converte un numero in un altro tipo. È sicuro solo se si è già controllato che il valore stia nell'intervallo, e qui il controllo precedente lo garantisce. Se i limiti fossero sbagliati, il compilatore non avviserebbe.
 - Lo stesso problema in `src/config.rs` (funzione `port`) è risolto con `u16::try_from(value)`, che converte e controlla il limite alto in un solo passaggio, restituendo un `Result`.
 
+### Esercizio 9: i pattern del `match` (`Ok(v)`, guardia `if`, `_`)
+
+Codice in `src/bin/esercizio9/main.rs`. Il punto che ha richiesto più tempo è come funziona questo `match`:
+
+```rust
+fn valida_porta(p: i64) -> Result<u16, String> {
+    match u16::try_from(p) {
+        Ok(v) if v >= 1024 => Ok(v),
+        _ => Err(format!("Porta {} non valida", p)),
+    }
+}
+```
+
+Da dove arriva `v`, passo per passo, con `p = 15432`:
+
+1. `u16::try_from(p)` converte `p` (un `i64`) in `u16` e produce `Ok(15432)`. Se il numero non ci sta (per esempio `70000` o `-1`) produce `Err(...)`.
+2. Il `match` esamina quel valore: è quello scritto subito dopo la parola `match`.
+3. Il pattern `Ok(v)` combacia con `Ok(15432)`: `v` viene dichiarata e riceve `15432`. Il tipo di `v` è `u16`.
+4. L'`if v >= 1024` (guardia) è una condizione in più sul ramo.
+5. Il valore a destra della freccia, `Ok(v)`, crea un `Ok` nuovo con il numero e lo restituisce.
+
+Cosa ricordare:
+
+- **Regola dei due lati.** A sinistra di `=>` c'è un **pattern**, a destra un **valore** da calcolare. Lo stesso `Ok(v)` a sinistra smonta una scatola (dichiara `v` e la lega al contenuto), a destra ne costruisce una nuova.
+- **Il pattern fa due cose insieme:** sceglie il ramo (è `Ok` o `Err`?) ed estrae il contenuto dando un nome (`v`). Nessuna istruzione `let` o `=`: l'abbinamento per posizione è l'assegnazione.
+
+  ```text
+  valore:    Ok( 15432 )
+  pattern:   Ok(   v   )      →  v = 15432
+  ```
+
+- **Paragone con la firma di una funzione.** In `fn raddoppia(v: u16)` il nome `v` nasce nella firma e riceve il valore dalla chiamata. In un ramo di `match`, `Ok(v)` fa da firma: dichiara `v`, e il valore viene dal `match`.
+- **Il nome `v` è scelto da chi scrive.** `Ok(c) if c >= 1024 => Ok(c)` funziona uguale, a patto di rinominare ovunque. `Ok` invece è fisso: `OK` maiuscolo non esiste.
+- **`Ok` ed `Err` sono alternative, non una dentro l'altra.** Un `Result` è sempre uno dei due. Con `70000` il valore è `Err(...)`, il pattern `Ok(v)` non combacia e `v` non viene mai creata.
+- **Il `p` dentro `Err(format!(...))`** serve solo a scrivere il numero nel testo del messaggio. Non è collegato a `v`: il percorso da `p` a `v` passa da `try_from`.
+- **Perché l'`Ok(v)` a destra:** la funzione promette un `Result`, ma `v` da sola è un `u16`. Va rimessa in un `Ok`.
+- **`_` è un pattern che significa "qualunque altro caso".** Non crea variabili. Va messo per ultimo, perché i rami si provano dall'alto in basso e vince il primo che combacia. Il `match` deve coprire tutti i casi (altrimenti `E0004`): qui `_` copre i casi `Err` e `Ok` con valore sotto 1024. `Ok(_)` e `Err(_)` si usano quando il contenuto non serve.
+- **`as` contro `try_from`.** `p as u16` converte sempre, anche quando il numero non ci sta (`70000 as u16` dà `4464`, senza errori). `u16::try_from(p)` restituisce un `Result` e ti dice se la conversione è riuscita.
+
 ## Prossimi argomenti
 
 - Async e `tokio` (task, `select!`, cancellazione)
